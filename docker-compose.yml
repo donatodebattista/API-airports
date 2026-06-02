@@ -1,0 +1,116 @@
+services:
+
+  # ─────────────────────────────────────────
+  # MongoDB
+  # ─────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: mongo-airports
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - airports-net
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Redis GEO
+  # ─────────────────────────────────────────
+  redis-geo:
+    image: redis:7
+    container_name: redis-geo
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_geo_data:/data
+    networks:
+      - airports-net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Redis POP - (ranking de popularidad)
+  # ─────────────────────────────────────────
+  redis-pop:
+    image: redis:7
+    container_name: redis-pop
+    restart: unless-stopped
+    ports:
+      - "6380:6379" # expuesto en 6380 para no colisionar con redis-geo
+    volumes:
+      - redis_pop_data:/data
+    networks:
+      - airports-net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Backend - Node.js & Express
+  # ─────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend-airports
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      MONGO_URI: mongodb://mongo:27017/airport_db
+      REDIS_GEO_HOST: redis-geo
+      REDIS_GEO_PORT: 6379
+      REDIS_POP_HOST: redis-pop
+      REDIS_POP_PORT: 6379
+    volumes:
+      # Monta el json directamente en el contenedor
+      - ./airports.json:/app/airports.json:ro
+      # Hot-reload: el código fuente se monta para desarrollo
+      - ./backend/src:/app/src:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis-geo:
+        condition: service_healthy
+      redis-pop:
+        condition: service_healthy
+    networks:
+      - airports-net
+
+  # ─────────────────────────────────────────
+  # Frontend – Nginx sirviendo Leaflet
+  # ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend-airports
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - airports-net
+
+volumes:
+  mongo_data:
+  redis_geo_data:
+  redis_pop_data:
+
+networks:
+  airports-net:
+    driver: bridge
