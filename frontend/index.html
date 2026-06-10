@@ -3,11 +3,146 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>API Aeropuertos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkyMap — Aeropuertos del Mundo</title>
+  <meta name="description" content="Mapa interactivo de aeropuertos del mundo con búsqueda geoespacial y ranking de popularidad." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 
 <body>
-  <h1>API Aeropuertos</h1>
+  <!-- ───── Mapa ───── -->
+  <div id="map"></div>
+
+  <!-- ───── Header flotante ───── -->
+  <header id="app-header">
+    <div class="header-stats">
+      <div class="stat-chip" id="stat-total">
+        <span class="stat-value">—</span>
+        <span class="stat-label">Aeropuertos</span>
+      </div>
+      <div class="stat-chip" id="stat-visible">
+        <span class="stat-value">—</span>
+        <span class="stat-label">Visibles</span>
+      </div>
+    </div>
+    <button id="btn-toggle-sidebar" class="btn-icon" aria-label="Abrir panel lateral">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </svg>
+    </button>
+  </header>
+
+  <!-- ───── Sidebar ───── -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <h2>Panel de control</h2>
+      <button id="btn-close-sidebar" class="btn-icon btn-icon-sm" aria-label="Cerrar panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="sidebar-content">
+      <!-- Búsqueda cercana -->
+      <section class="panel-section" id="section-nearby">
+        <h3 class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon">
+            <circle cx="12" cy="12" r="10" />
+            <circle cx="12" cy="12" r="3" />
+            <line x1="12" y1="2" x2="12" y2="5" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="5" y2="12" />
+            <line x1="19" y1="12" x2="22" y2="12" />
+          </svg>
+          Buscar cercanos
+        </h3>
+        <p class="section-desc">Hacé clic en el mapa para seleccionar un punto, o ingresá las coordenadas manualmente.</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="input-lat">Latitud</label>
+            <input type="number" id="input-lat" step="any" placeholder="-34.56" />
+          </div>
+          <div class="form-group">
+            <label for="input-lng">Longitud</label>
+            <input type="number" id="input-lng" step="any" placeholder="-58.41" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="input-radius">Radio (km)</label>
+          <input type="number" id="input-radius" value="100" min="1" max="20000" />
+        </div>
+        <button id="btn-search-nearby" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          Buscar
+        </button>
+        <div id="nearby-results" class="results-list hidden"></div>
+      </section>
+
+      <!-- Ranking de popularidad -->
+      <section class="panel-section" id="section-popular">
+        <h3 class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon">
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+            <polyline points="17 6 23 6 23 12" />
+          </svg>
+          Más visitados
+        </h3>
+        <p class="section-desc">Ranking de aeropuertos más consultados (últimas 24h).</p>
+        <button id="btn-load-popular" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg">
+            <polyline points="1 4 1 10 7 10" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+          </svg>
+          Actualizar ranking
+        </button>
+        <div id="popular-results" class="results-list hidden"></div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- ───── Overlay para cerrar sidebar en mobile ───── -->
+  <div id="sidebar-overlay" class="sidebar-overlay"></div>
+  <!-- ───── Panel de Detalle Flotante ───── -->
+  <div id="detail-panel" class="detail-panel">
+    <button id="btn-close-detail" class="btn-icon btn-icon-sm detail-close" aria-label="Cerrar detalles">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+    <div id="detail-content"></div>
+  </div>
+
+  <!-- ───── Toast de notificaciones ───── -->
+  <div id="toast-container"></div>
+
+  <!-- ───── Leaflet JS ───── -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- MarkerCluster JS -->
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+  <!-- App JS -->
+  <script src="js/app.js"></script>
 </body>
 
 </html>
