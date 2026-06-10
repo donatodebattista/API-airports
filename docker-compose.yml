@@ -101,6 +101,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    volumes:
+      # Dev: monta archivos locales para ver cambios sin rebuild
+      - ./frontend/index.html:/usr/share/nginx/html/index.html:ro
+      - ./frontend/css:/usr/share/nginx/html/css:ro
+      - ./frontend/js:/usr/share/nginx/html/js:ro
+      - ./frontend/assets:/usr/share/nginx/html/assets:ro
     depends_on:
       - backend
     networks:
