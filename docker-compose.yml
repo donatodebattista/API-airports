@@ -107,6 +107,7 @@ services:
       - ./frontend/css:/usr/share/nginx/html/css:ro
       - ./frontend/js:/usr/share/nginx/html/js:ro
       - ./frontend/assets:/usr/share/nginx/html/assets:ro
+      - ./frontend/public/favicon.ico:/usr/share/nginx/html/favicon.ico:ro
     depends_on:
       - backend
     networks:

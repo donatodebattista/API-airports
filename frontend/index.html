@@ -7,6 +7,8 @@
   <title>SkyMap — Aeropuertos del Mundo</title>
   <meta name="description"
     content="Mapa interactivo de aeropuertos del mundo con búsqueda geoespacial y ranking de popularidad." />
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -56,11 +58,11 @@
     </svg>
   </button>
 
-  <!-- ───── Modal crear aeropuerto ───── -->
+  <!-- ───── Modal crear/editar aeropuerto ───── -->
   <div id="modal-create" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
-        <h2 class="modal-title">Nuevo Aeropuerto</h2>
+        <h2 class="modal-title" id="modal-title">Nuevo Aeropuerto</h2>
         <button id="btn-close-modal" class="btn-icon" aria-label="Cerrar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -127,7 +129,7 @@
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
-          Crear Aeropuerto
+          <span id="btn-confirm-text">Crear Aeropuerto</span>
         </button>
       </div>
     </div>
