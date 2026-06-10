@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSidebar();
   initNearby();
   initPopular();
+  initCreateModal();
   loadAllAirports();
 });
 
@@ -39,7 +40,7 @@ function initMap() {
     // maxBoundsViscosity: 1.0
   });
 
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
   // Tile layer - CartoDB Dark Matter (dark theme)
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -123,6 +124,158 @@ function createLoadingPopup() {
     <div class="spinner"></div>
     Cargando datos…
   </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CREAR AEROPUERTO
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function initCreateModal() {
+  const overlay = document.getElementById('modal-create');
+  const btnOpen = document.getElementById('btn-open-create');
+  const btnClose = document.getElementById('btn-close-modal');
+  const btnCancel = document.getElementById('btn-cancel-modal');
+  const btnConfirm = document.getElementById('btn-confirm-create');
+
+  const openModal = () => {
+    overlay.classList.remove('hidden');
+    document.getElementById('new-iata').focus();
+  };
+
+  const closeModal = () => {
+    overlay.classList.add('hidden');
+    clearModalForm();
+  };
+
+  btnOpen.addEventListener('click', openModal);
+  btnClose.addEventListener('click', closeModal);
+  btnCancel.addEventListener('click', closeModal);
+
+  // Cerrar al hacer click fuera del modal
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeModal();
+  });
+
+  // Cerrar con Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeModal();
+  });
+
+  btnConfirm.addEventListener('click', createAirport);
+}
+
+function clearModalForm() {
+  ['new-iata', 'new-icao', 'new-name', 'new-city',
+    'new-lat', 'new-lng', 'new-alt', 'new-tz'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+}
+
+// El click en el mapa ya llena lat/lng en el nearby form;
+// si el modal está abierto, los autocompleta también
+function onMapClick(e) {
+  const { lat, lng } = e.latlng;
+
+  // Nearby
+  document.getElementById('input-lat').value = lat.toFixed(5);
+  document.getElementById('input-lng').value = lng.toFixed(5);
+
+  // Modal de creación (si está abierto)
+  const modal = document.getElementById('modal-create');
+  if (!modal.classList.contains('hidden')) {
+    document.getElementById('new-lat').value = lat.toFixed(5);
+    document.getElementById('new-lng').value = lng.toFixed(5);
+  }
+
+  // Marker visual
+  if (clickMarker) map.removeLayer(clickMarker);
+  const icon = L.divIcon({
+    className: '',
+    html: '<div class="click-marker"></div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
+  clickMarker = L.marker([lat, lng], { icon }).addTo(map);
+}
+
+async function createAirport() {
+  const iata = document.getElementById('new-iata').value.trim().toUpperCase();
+  const name = document.getElementById('new-name').value.trim();
+  const lat = parseFloat(document.getElementById('new-lat').value);
+  const lng = parseFloat(document.getElementById('new-lng').value);
+
+  // Validación mínima (campos obligatorios según el schema)
+  if (!iata || !name || isNaN(lat) || isNaN(lng)) {
+    showToast('Completá los campos obligatorios: IATA, Nombre, Latitud y Longitud', 'error');
+    return;
+  }
+
+  if (iata.length < 2 || iata.length > 4) {
+    showToast('El código IATA debe tener entre 2 y 4 caracteres', 'error');
+    return;
+  }
+
+  const btnConfirm = document.getElementById('btn-confirm-create');
+  btnConfirm.disabled = true;
+  btnConfirm.textContent = 'Creando…';
+
+  const body = {
+    iata_faa: iata,
+    name,
+    lat,
+    lng,
+    city: document.getElementById('new-city').value.trim() || undefined,
+    icao: document.getElementById('new-icao').value.trim().toUpperCase() || undefined,
+    alt: document.getElementById('new-alt').value !== ''
+      ? parseInt(document.getElementById('new-alt').value, 10)
+      : undefined,
+    tz: document.getElementById('new-tz').value.trim() || undefined,
+  };
+
+  // Limpiar undefined para no enviarlos en el JSON
+  Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
+
+  try {
+    const res = await fetch(`${API}/airports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al crear el aeropuerto');
+    }
+
+    // Agregar al estado local y al mapa
+    allAirports.push(data);
+    const marker = createAirportMarker(data);
+    clusterGroup.addLayer(marker);
+
+    // Actualizar estadísticas
+    updateStat('stat-total', allAirports.length.toLocaleString());
+    updateStat('stat-visible', allAirports.length.toLocaleString());
+
+    // Volar al nuevo aeropuerto
+    map.flyTo([data.lat, data.lng], 10, { duration: 1.2 });
+
+    showToast(`Aeropuerto ${data.iata_faa} creado correctamente`, 'success');
+
+    document.getElementById('modal-create').classList.add('hidden');
+    clearModalForm();
+
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btnConfirm.disabled = false;
+    btnConfirm.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      Crear Aeropuerto`;
+  }
 }
 
 // ── Fetch detalle de aeropuerto ───────────────────────────────────────────────
