@@ -11,6 +11,7 @@ let nearbyLayer;       // capa para resultados nearby
 let nearbyCircle;      // círculo de radio
 let clickMarker;       // marker del punto clickeado en el mapa
 let allAirports = [];  // cache de aeropuertos
+let editingIata = null; // código IATA del aeropuerto que se está editando
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -138,6 +139,13 @@ function initCreateModal() {
   const btnConfirm = document.getElementById('btn-confirm-create');
 
   const openModal = () => {
+    editingIata = null;
+    const titleEl = document.querySelector('.modal-title');
+    if (titleEl) titleEl.textContent = 'Nuevo Aeropuerto';
+    document.getElementById('new-iata').disabled = false;
+    const btnConfirm = document.getElementById('btn-confirm-create');
+    if (btnConfirm) btnConfirm.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Crear Aeropuerto`;
+    clearModalForm();
     overlay.classList.remove('hidden');
     document.getElementById('new-iata').focus();
   };
@@ -145,6 +153,30 @@ function initCreateModal() {
   const closeModal = () => {
     overlay.classList.add('hidden');
     clearModalForm();
+  };
+
+  window.openEditModal = (iataCode) => {
+    const ap = allAirports.find(a => a.iata_faa === iataCode);
+    if (!ap) return;
+
+    editingIata = iataCode;
+    const titleEl = document.querySelector('.modal-title');
+    if (titleEl) titleEl.textContent = 'Actualizar Aeropuerto';
+    const btnConfirm = document.getElementById('btn-confirm-create');
+    if (btnConfirm) btnConfirm.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Actualizar Aeropuerto`;
+
+    document.getElementById('new-iata').value = ap.iata_faa || '';
+    document.getElementById('new-iata').disabled = true; // No se edita la PK
+    document.getElementById('new-icao').value = ap.icao || '';
+    document.getElementById('new-name').value = ap.name || '';
+    document.getElementById('new-city').value = ap.city || '';
+    document.getElementById('new-lat').value = ap.lat !== undefined ? ap.lat : '';
+    document.getElementById('new-lng').value = ap.lng !== undefined ? ap.lng : '';
+    document.getElementById('new-alt').value = ap.alt !== undefined && ap.alt !== null ? ap.alt : '';
+    document.getElementById('new-tz').value = ap.tz || '';
+
+    overlay.classList.remove('hidden');
+    document.getElementById('new-name').focus();
   };
 
   btnOpen.addEventListener('click', openModal);
@@ -161,7 +193,7 @@ function initCreateModal() {
     if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeModal();
   });
 
-  btnConfirm.addEventListener('click', createAirport);
+  btnConfirm.addEventListener('click', saveAirport);
 }
 
 function clearModalForm() {
@@ -169,6 +201,10 @@ function clearModalForm() {
     'new-lat', 'new-lng', 'new-alt', 'new-tz'].forEach(id => {
       document.getElementById(id).value = '';
     });
+  editingIata = null;
+  const titleEl = document.querySelector('.modal-title');
+  if (titleEl) titleEl.textContent = 'Nuevo Aeropuerto';
+  document.getElementById('new-iata').disabled = false;
 }
 
 // El click en el mapa ya llena lat/lng en el nearby form;
@@ -198,7 +234,7 @@ function onMapClick(e) {
   clickMarker = L.marker([lat, lng], { icon }).addTo(map);
 }
 
-async function createAirport() {
+async function saveAirport() {
   const iata = document.getElementById('new-iata').value.trim().toUpperCase();
   const name = document.getElementById('new-name').value.trim();
   const lat = parseFloat(document.getElementById('new-lat').value);
@@ -217,7 +253,7 @@ async function createAirport() {
 
   const btnConfirm = document.getElementById('btn-confirm-create');
   btnConfirm.disabled = true;
-  btnConfirm.textContent = 'Creando…';
+  btnConfirm.innerHTML = '<div class="spinner spinner-sm"></div> ' + (editingIata ? 'Guardando…' : 'Creando…');
 
   const body = {
     iata_faa: iata,
@@ -236,8 +272,11 @@ async function createAirport() {
   Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
 
   try {
-    const res = await fetch(`${API}/airports`, {
-      method: 'POST',
+    const url = editingIata ? `${API}/airports/${editingIata}` : `${API}/airports`;
+    const method = editingIata ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
@@ -245,22 +284,31 @@ async function createAirport() {
     const data = await res.json();
 
     if (!res.ok) {
-      throw new Error(data.error || 'Error al crear el aeropuerto');
+      throw new Error(data.error || (editingIata ? 'Error al actualizar el aeropuerto' : 'Error al crear el aeropuerto'));
     }
 
-    // Agregar al estado local y al mapa
-    allAirports.push(data);
-    const marker = createAirportMarker(data);
-    clusterGroup.addLayer(marker);
+    if (editingIata) {
+      showToast(`Aeropuerto ${data.iata_faa} actualizado correctamente`, 'success');
+      // Recargar todo para reflejar los cambios
+      clusterGroup.clearLayers();
+      if (nearbyLayer) map.removeLayer(nearbyLayer);
+      if (nearbyCircle) map.removeLayer(nearbyCircle);
+      loadAllAirports();
+      map.closePopup();
+    } else {
+      // Agregar al estado local y al mapa
+      allAirports.push(data);
+      const marker = createAirportMarker(data);
+      clusterGroup.addLayer(marker);
 
-    // Actualizar estadísticas
-    updateStat('stat-total', allAirports.length.toLocaleString());
-    updateStat('stat-visible', allAirports.length.toLocaleString());
+      // Actualizar estadísticas
+      updateStat('stat-total', allAirports.length.toLocaleString());
+      updateStat('stat-visible', allAirports.length.toLocaleString());
 
-    // Volar al nuevo aeropuerto
-    map.flyTo([data.lat, data.lng], 10, { duration: 1.2 });
-
-    showToast(`Aeropuerto ${data.iata_faa} creado correctamente`, 'success');
+      // Volar al nuevo aeropuerto
+      map.flyTo([data.lat, data.lng], 10, { duration: 1.2 });
+      showToast(`Aeropuerto ${data.iata_faa} creado correctamente`, 'success');
+    }
 
     document.getElementById('modal-create').classList.add('hidden');
     clearModalForm();
@@ -274,7 +322,7 @@ async function createAirport() {
         <line x1="12" y1="5" x2="12" y2="19"></line>
         <line x1="5" y1="12" x2="19" y2="12"></line>
       </svg>
-      Crear Aeropuerto`;
+      ${editingIata ? 'Actualizar Aeropuerto' : 'Crear Aeropuerto'}`;
   }
 }
 
@@ -318,13 +366,20 @@ async function fetchAirportDetail(iataCode, marker) {
             <span class="popup-detail-value">${ap.tz || '—'}</span>
           </div>
         </div>
-        <div class="popup-actions" style="margin-top: var(--space-md);">
-          <button class="btn btn-danger btn-sm" onclick="deleteAirport('${ap.iata_faa}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg">
+        <div class="popup-actions" style="margin-top: var(--space-md); display: flex; gap: var(--space-sm);">
+          <button class="btn btn-secondary btn-sm" style="flex: 1; padding: var(--space-sm);" onclick="openEditModal('${ap.iata_faa}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg" width="16" height="16">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            Editar
+          </button>
+          <button class="btn btn-danger btn-sm" style="flex: 1; padding: var(--space-sm);" onclick="deleteAirport('${ap.iata_faa}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg" width="16" height="16">
               <polyline points="3 6 5 6 21 6"></polyline>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
             </svg>
-            Eliminar Aeropuerto
+            Eliminar
           </button>
         </div>
       </div>`;
