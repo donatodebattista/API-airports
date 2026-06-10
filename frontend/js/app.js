@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function initMap() {
-  const bounds = L.latLngBounds([-90, -180], [90, 180]).pad(0.15);
+  //const bounds = L.latLngBounds([-90, -180], [90, 180]).pad(0.15);
 
   map = L.map('map', {
     center: [20, 0],
@@ -35,8 +35,8 @@ function initMap() {
     maxZoom: 18,
     zoomControl: false,
     attributionControl: true,
-    maxBounds: bounds,
-    maxBoundsViscosity: 1.0
+    // maxBounds: bounds,
+    // maxBoundsViscosity: 1.0
   });
 
   L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -84,7 +84,11 @@ function createAirportMarker(airport) {
   // Al hacer click: pedir datos al backend (esto cuenta como visita)
   marker.on('click', () => {
     marker.unbindPopup();
-    marker.bindPopup(createLoadingPopup(), { maxWidth: 320 }).openPopup();
+    marker.bindPopup(createLoadingPopup(), {
+      maxWidth: 320,
+      autoPan: true,
+      autoPanPadding: L.point(20, 20),   // margen respecto al borde del mapa
+    }).openPopup();
     fetchAirportDetail(airport.iata_faa, marker);
   });
 
@@ -173,6 +177,9 @@ async function fetchAirportDetail(iataCode, marker) {
       </div>`;
 
     marker.setPopupContent(popupHtml);
+    if (marker.isPopupOpen()) {
+      marker.getPopup().update();   // recalcula posición y dispara autoPan
+    }
   } catch (err) {
     marker.setPopupContent(`<div class="popup-content popup-loading">Error al cargar datos</div>`);
     showToast('No se pudo cargar el aeropuerto', 'error');
